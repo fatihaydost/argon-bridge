@@ -62,13 +62,13 @@ class StateTest(XdgCase):
         self.assertGreater(state.cooldown_until(), 0)
         self.assertTrue(state.dir().startswith(os.path.join(self.tmp.name, "st")))
 
-    def test_results_and_jobs_written_in_one_clock_tick_all_stay(self):
+    def test_results_and_jobs_written_in_one_clock_tick_all_stay_in_order(self):
         from unittest import mock
         with mock.patch.object(state.time, "time_ns", lambda: 1):  # Windows' clock ticks in ~16 ms
             for i in range(3):
                 state.inbox_put("s", {"n": i})
             paths = {state.new_job({"n": i}) for i in range(3)}
-        self.assertEqual(sorted(x["n"] for x in state.inbox_take("s")), [0, 1, 2])
+        self.assertEqual([x["n"] for x in state.inbox_take("s")], [0, 1, 2])
         self.assertEqual(len(paths), 3)
 
 

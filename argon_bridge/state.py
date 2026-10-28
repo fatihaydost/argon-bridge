@@ -1,6 +1,7 @@
 """Session, repo and log state in $XDG_STATE_HOME/argon-bridge/."""
 import contextlib
 import hashlib
+import itertools
 import json
 import os
 import secrets
@@ -124,8 +125,11 @@ def owners(root):
 
 def _stamp():
     """A file name that sorts by time and never repeats: Windows' clock ticks in ~16 ms, so two results written
-    in one tick had one name and the second replaced the first."""
-    return f"{time.time_ns()}-{os.getpid()}-{secrets.token_hex(3)}"
+    in one tick had one name and the second replaced the first; the counter keeps one process's writes in order."""
+    return f"{time.time_ns()}-{next(_seq):09d}-{os.getpid()}-{secrets.token_hex(3)}"
+
+
+_seq = itertools.count()
 
 
 def new_job(job):
