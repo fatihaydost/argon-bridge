@@ -220,6 +220,14 @@ class HookTest(Env):
         self.assertEqual(len(self.agy_calls()), 1)
 
 
+    def test_harness_messages_are_not_stored_as_the_users_words(self):
+        for text in ("<task-notification>\n<summary>Agent finished</summary>", "<system-reminder>hook said x",
+                     "<bash-input>ls</bash-input>", "<bash-stdout>out</bash-stdout>",
+                     "<local-command-stdout>ok</local-command-stdout>"):
+            hooks.on_prompt({"session_id": "s", "prompt": text})
+        self.assertEqual(state.session("s")["prompts"], ["Make add() add, and make total() skip None."])
+
+
 class CliHookTest(Env):
     def test_bin_runs_hook_and_never_crashes(self):
         exe = [os.path.join(os.path.dirname(HERE), "bin", "argon-bridge")]

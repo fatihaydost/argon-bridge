@@ -5,7 +5,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
 from argon_bridge import cli, config, hooks, schemas
-from tests.helpers import Env, finding, run_cli, run_cli_output, success
+from tests.helpers import Env, cwd_of, finding, run_cli, run_cli_output, success
 from tests.test_background import BIG, stage
 
 
@@ -226,6 +226,18 @@ class CliTest(Env):
 
     def test_review_clean_tree(self):
         self.assertIn("nothing to review", run("review", "--repo", self.root)[1])
+
+
+    def test_ask_with_a_missing_repo_says_so_and_never_calls_argon(self):
+        code, out = run("ask", "q", "--repo", os.path.join(self.tmp, "nope"))
+        self.assertEqual(code, 2)
+        self.assertIn("not a directory", out)
+        self.assertEqual(self.agy_calls(), [])
+
+    def test_ask_repo_expands_the_home_folder(self):
+        self.agy_returns(success({"position": "p", "reasons": [], "risks": []}))
+        run_cli("ask", "q", "--repo", "~/repo")  # HOME is self.tmp; a quoted ~ reaches us unexpanded
+        self.assertEqual(cwd_of(self.agy_calls()[-1]), self.root)
 
 
 if __name__ == "__main__":

@@ -44,7 +44,8 @@ def secret_rules(root):
     rules, seen = list(SECRET_DENY), 0
     for top, dirs, files in os.walk(os.path.abspath(root)):  # agy reads a relative rule from its own cwd
         dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
-        rules += [f"read_file({os.path.join(top, n)})" for n in files if _is_secret(n)]
+        for path in (os.path.join(top, n) for n in files if _is_secret(n)):
+            rules += [f"read_file({path})"] + ([f"read_file({os.path.realpath(path)})"] if os.path.islink(path) else [])
         seen += len(files)
         if seen > 50000:  # shortcut: a huge tree is only partly scanned, upgrade if a real repo hits this
             break

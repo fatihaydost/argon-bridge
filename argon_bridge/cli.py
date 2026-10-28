@@ -264,6 +264,10 @@ def cmd_ask(argv):
         print('usage: argon-bridge ask "<question>" [--repo PATH] [--file PATH]... [--findings] '
               '[--timeout SECONDS]', file=sys.stderr)
         return 2
+    repo = os.path.expanduser(repo) if repo else None
+    if repo and not os.path.isdir(repo):
+        print(f"--repo {repo}: not a directory", file=sys.stderr)
+        return 2
     timeout = max(30, min(int(limit), cfg["timeout"])) if limit else cfg["ask_timeout"]
     sid = state.current_session_id()
     prompt, pkt = prompts.ask(question, packet.user_words_all(sid) if sid else "", files, as_findings)

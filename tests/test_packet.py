@@ -90,5 +90,20 @@ class PacketTest(Env):
             self.assertFalse({"reasoning", "claude", "summary"} & set(inspect.signature(fn).parameters))
 
 
+    def test_an_amended_commit_is_not_diffed_again(self):
+        root = self.git_repo()
+        git = lambda *a: subprocess.run(["git", "-C", root, *a], check=True, capture_output=True, text=True)  # noqa: E731
+        with open(os.path.join(root, "a.py"), "w") as f:
+            f.write("old = 1\n")
+        git("commit", "-qam", "first")
+        old = git("rev-parse", "HEAD").stdout.strip()
+        with open(os.path.join(root, "a.py"), "w") as f:
+            f.write("new = 2\n")
+        git("commit", "-q", "--amend", "-am", "first")
+        new = git("rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(packet.runs(root, [old, new]), [[git("rev-parse", "HEAD~1").stdout.strip(), new]])
+        self.assertNotIn("old = 1", packet.change_diff(root, [old, new]))
+
+
 if __name__ == "__main__":
     unittest.main()

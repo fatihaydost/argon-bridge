@@ -157,5 +157,18 @@ class FixTest(Env):
         self.assertNotIn("message 5\n", words + "\n")
 
 
+    def test_a_clean_stop_review_takes_the_pending_commits_with_it(self):
+        config.set_value("mode", "thorough")
+        self.agy_returns(success({"findings": []}))
+        put(self.root, {"small.py": "s = 1\n"})
+        self.commit("git add -A && git commit -m x")  # too small alone: kept for the next review
+        self.assertEqual(len(state.session("s")["code"][self.root]["pending"]), 1)
+        self.edited(self.root, {"new1.py": "a = 1\n" * 25, "new2.py": "b = 2\n" * 25})
+        hooks.on_stop({"session_id": "s", "cwd": self.root})
+        self.assertEqual(len(self.agy_calls()), 1)
+        self.assertEqual(state.session("s")["code"][self.root]["pending"], [])
+        self.assertNotIn("not reviewed yet", hooks._inbox("s")[0])
+
+
 if __name__ == "__main__":
     unittest.main()

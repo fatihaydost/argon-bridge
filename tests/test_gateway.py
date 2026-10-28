@@ -430,5 +430,13 @@ class GatewayOutputTest(Env):
         self.assertNotIn("origin", run(cwd=self.root, packet="# Plan\n\nstep 1").data["findings"][0])
 
 
+    def test_no_origin_when_the_diff_was_cut(self):
+        big = "diff --git a/b.py b/b.py\n--- a/b.py\n+++ b/b.py\n@@ -0,0 +1,9000 @@\n" + "+y = 2\n" * 30000
+        tail = "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1,1 +1,2 @@\n def add(a, b):\n+    return a + b\n"
+        pkt = prompts.code_review("words", big + tail, "")[1]
+        self.agy_returns(success({"findings": [finding(line=2, evidence="return a + b")]}))
+        self.assertNotIn("origin", run(cwd=self.root, packet=pkt).data["findings"][0])  # a.py's hunk was cut off
+
+
 if __name__ == "__main__":
     unittest.main()

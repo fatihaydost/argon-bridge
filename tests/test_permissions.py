@@ -160,5 +160,13 @@ class PerRunTest(Env):
                                 for r in permissions.SECRET_DENY), home)
 
 
+    def test_secret_rules_name_a_linked_secrets_target_too(self):
+        root = self.git_repo(files={"a.py": "x"})
+        target = os.path.join(self.tmp, "elsewhere.env")
+        open(target, "w").close()
+        os.symlink(target, os.path.join(root, ".env"))
+        self.assertIn(f"read_file({os.path.realpath(target)})", permissions.secret_rules(root))
+
+
 if __name__ == "__main__":
     unittest.main()

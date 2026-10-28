@@ -185,7 +185,9 @@ def code_diff(root, since=None, adds=None, paths=None, names=False):
 
 
 def runs(root, shas):
-    """Commits `shas` (oldest first) as [[base, last]] spans: one per stretch where each is the next one's parent."""
+    """Commits `shas` (oldest first) as [[base, last]] spans: one per stretch where each is the next one's parent.
+    A commit no longer in HEAD's history (amended, rebased, reset) is left out: its change is gone or in a newer one."""
+    shas = [s for s in shas if _git(root, "merge-base", "--is-ancestor", s, "HEAD") is not None]
     out = _git(root, "log", "--no-walk=unsorted", "--format=%H %P", *shas) if shas else None
     spans = []
     for line in (out or "").splitlines():

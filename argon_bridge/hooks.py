@@ -187,15 +187,15 @@ DELEGATE = "argon-bridge delegate"  # every delegated-phase note names the next 
 def _unreviewed(m):
     """A failed or dead job's change was never reviewed: its commits go back to its own session (never another
     one's), ahead of that session's later ones, into its next review."""
-    if m.get("kind") == "code" and m.get("sid"):
-        data = state.session(m["sid"])
+    if not m.get("sid"):
+        return
+    data = state.session(m["sid"])
+    if m.get("kind") == "code" or (m.get("kind") == "stop" and m.get("shas")):
         code = data.setdefault("code", {}).setdefault(m["root"], {})
         code["pending"] = list(dict.fromkeys((m.get("shas") or []) + code.get("pending", [])))
-        state.save_session(m["sid"], data)
-    elif m.get("sid"):
-        data = state.session(m["sid"])
+    if m.get("kind") != "code":
         data.pop("stop_digest", None)
-        state.save_session(m["sid"], data)
+    state.save_session(m["sid"], data)
 
 
 def reap():
@@ -362,11 +362,15 @@ def _tell_claude(status):
                                    "additionalContext": f"argon-bridge (automatic check): {status}"}}
 
 
+# the plugin's own commands, and what the harness sends as a prompt (background task results carry Claude's work)
+NOT_USER_WORDS = ("/argon-bridge", "<task-notification>", "<system-reminder>", "<bash-", "<local-command-")
+
+
 def on_prompt(inp):
     if _sub(inp):
         return {}
     text = (inp.get("prompt") or "").strip()
-    if text and not text.startswith("/argon-bridge"):
+    if text and not text.startswith(NOT_USER_WORDS):
         state.append_prompt(inp["session_id"], text)
     waiting, _ = _inbox(inp["session_id"])
     if not waiting:
@@ -663,6 +667,8 @@ def _stop_review(sid, cwd):
     if packet.is_small(diff) or data.get("stop_digest") == digest or _reused(state.repo(root), diff):
         return None
     data["stop_digest"] = digest
+    if pending:  # in this review now; a failed one gives them back (_unreviewed)
+        data["code"][root]["pending"] = []
     state.save_session(sid, data)
     prompt, pkt = prompts.code_review(packet.user_words(sid), diff, packet.decisions(root, cfg))
     _start_review(sid, "stop", root, prompt, pkt, cfg, pending)

@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass, field
 
 from . import compat, permissions, schemas, state
+from .prompts import DIFF_CUT
 
 MODEL = "gemini-4-argon"
 LOWER = {"high": "medium", "medium": "low", "low": "low"}
@@ -139,7 +140,8 @@ def _check_findings(findings, cwd, packet):
     (Argon has quoted code that does not exist), `origin: pre-existing` when the line is outside the diff's hunks.
     Marked afterwards, not asked for in the schema: Argon's answer form stays as it is."""
     root = os.path.realpath(cwd)
-    spans = _diff_spans(packet) if "\ndiff --git " in "\n" + packet else None
+    # a cut diff's later hunks are missing, so a line outside the ones left is not known to be pre-existing
+    spans = _diff_spans(packet) if "\ndiff --git " in "\n" + packet and DIFF_CUT not in packet else None
     seen = _norm(packet)
     for f in findings:
         path = os.path.realpath(os.path.join(root, f["file"]))

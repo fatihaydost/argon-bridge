@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest import mock
 
-from argon_bridge import compat, config, hooks, jobs, permissions, state, worker
+from argon_bridge import compat, config, gateway, hooks, jobs, permissions, state, worker
 from tests.helpers import Env, phase, report, run_cli, run_cli_output
 
 
@@ -739,6 +739,13 @@ class WorkerTest(Env):
         finally:
             permissions.hold = orig
         self.assertEqual(seen, [self.root])
+
+
+    def test_a_timed_out_phase_keeps_its_conversation(self):
+        failed = gateway.Result(False, data={"conversation_id": "c9"}, error="timeout", detail="no answer")
+        with mock.patch.object(worker.gateway, "work", return_value=failed):
+            job_id = self.start_one_phase_job()
+        self.assertEqual(jobs.load(job_id)["conversation"], "c9")
 
 
 if __name__ == "__main__":

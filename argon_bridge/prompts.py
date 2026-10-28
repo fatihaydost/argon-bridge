@@ -16,10 +16,13 @@ def _section(title, body):
     return f"# {title}\n\n{body.strip() or '(none)'}\n"
 
 
+DIFF_CUT = "[diff truncated; read the files in the repository for the rest]"
+
+
 def _clip_diff(diff):
     if len(diff) <= MAX_DIFF:
         return diff
-    return diff[:MAX_DIFF] + "\n\n[diff truncated; read the files in the repository for the rest]"
+    return diff[:MAX_DIFF] + "\n\n" + DIFF_CUT
 
 
 def _files(files):

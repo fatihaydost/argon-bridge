@@ -194,6 +194,8 @@ def run_phase(job_id):
         p.pop("notes", None)
         p.pop("answer", None)
     job["tokens"] = job.get("tokens", 0) + int((result.usage or {}).get("total_tokens") or 0)
+    if not result.ok and (result.data or {}).get("conversation_id"):  # the turn reached Argon: later turns go on in it
+        job["conversation"] = result.data["conversation_id"]
     if result.ok:
         rep = result.data
         if rep.get("conversation_id"):
@@ -202,18 +204,12 @@ def run_phase(job_id):
         p["status"] = {"done": "done", "question": "question", "denied": "denied"}.get(rep["status"], "failed")
         job["state"] = "waiting_answer" if p["status"] == "question" else "waiting_check"
     elif result.error == "quota":
-        if (result.data or {}).get("conversation_id"):
-            job["conversation"] = result.data["conversation_id"]
         p["status"] = job["state"] = "paused_quota"
         p["report"] = {"summary": f"quota: {result.detail}"}
     elif result.error == "stalled":  # the work so far is in the worktree, the conversation can go on
-        if (result.data or {}).get("conversation_id"):
-            job["conversation"] = result.data["conversation_id"]
         p["status"], job["state"] = "stalled", "waiting_check"
         p["report"] = {"summary": f"stalled: {result.detail}"}
     elif result.error == "malformed":  # the turn ended, only its report is broken: the work is still checked
-        if (result.data or {}).get("conversation_id"):
-            job["conversation"] = result.data["conversation_id"]
         p["status"], job["state"] = "report_malformed", "waiting_check"
         raw = f"; raw output: {result.raw}" if result.raw else ""
         p["report"] = {"summary": f"report_malformed: {result.detail}{raw}"}
