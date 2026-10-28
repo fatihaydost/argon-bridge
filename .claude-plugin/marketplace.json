@@ -1,0 +1,16 @@
+{
+  "name": "argon-tools",
+  "owner": {
+    "name": "Fatih Aydost"
+  },
+  "plugins": [
+    {
+      "name": "argon-bridge",
+      "source": "./",
+      "description": "Bridges Claude Code and Gemini 4 Argon for independent reviews, second opinions, and delegated worktree tasks."
+    }
+  ],
+  "metadata": {
+    "description": "Claude Code plugins that bridge Claude and Gemini 4 Argon."
+  }
+}

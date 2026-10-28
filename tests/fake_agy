@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Stand-in for `agy` in tests. FAKE_AGY_OUTS: JSON list of responses, one per call
+(the last repeats). FAKE_AGY_ARGS: file that gets one JSON argv line per call
+(the packet and the schema of the last call go to FAKE_AGY_ARGS + ".packet" / ".schema").
+FAKE_AGY_DENIED: a command the run was denied (adds denied_actions). FAKE_AGY_EDIT: `<rel path>:<content>`
+written in the cwd. `--output-format stream-json` prints step events and a final `result` event.
+FAKE_AGY_STREAM: a file of real agy stream-json lines (tests/fixtures) printed as is, in place of the answer.
+FAKE_AGY_STALL: seconds a stream-json run goes silent after its first event; with FAKE_AGY_COMMAND set, a child
+process runs meanwhile as a command would. The pids go to FAKE_AGY_ARGS + ".pids". FAKE_AGY_STEP: a step_update event (tool name) printed right
+after init. FAKE_AGY_LEFTOVER: seconds a command it starts keeps running (and holding stdout) after its answer;
+its pid goes to FAKE_AGY_ARGS + ".leftover"."""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+log = os.environ.get("FAKE_AGY_ARGS")
+calls = 0
+if log:
+    if os.path.exists(log):
+        with open(log) as f:
+            calls = sum(1 for _ in f)
+    with open(log, "a") as f:
+        f.write(json.dumps(sys.argv[1:] + ["@cwd=" + os.getcwd()]) + "\n")
+    m = re.search(r"The (?:review|phase) packet is the file (\S+?)\. ", " ".join(sys.argv[1:]))
+    if m:
+        shutil.copyfile(m.group(1), log + ".packet")
+    if "--json-schema" in sys.argv:
+        shutil.copyfile(sys.argv[sys.argv.index("--json-schema") + 1], log + ".schema")
+time.sleep(float(os.environ.get("FAKE_AGY_SLEEP", "0")))
+if sys.argv[1:2] == ["models"]:
+    print("gemini-4-argon-medium\tGemini 4 Argon (Medium)")
+    sys.exit(0)
+outs = os.environ.get("FAKE_AGY_OUTS", "[]")
+if os.environ.get("FAKE_AGY_OUTS_FILE"):  # never back into the environment: Windows caps a variable at 32767 chars
+    with open(os.environ["FAKE_AGY_OUTS_FILE"]) as f:
+        outs = f.read()
+outs = json.loads(outs) or [{"status": "SUCCESS", "response": ""}]
+out = dict(outs[min(calls, len(outs) - 1)])
+edit = os.environ.get("FAKE_AGY_EDIT")
+if edit:
+    rel, _, content = edit.partition(":")
+    with open(rel, "a") as f:
+        f.write(content)
+denied = os.environ.get("FAKE_AGY_DENIED")
+if denied:
+    out["denied_actions"] = [{"action": "command", "display_name": "RunCommand"}]
+if "stream-json" in sys.argv and os.environ.get("FAKE_AGY_STREAM"):
+    with open(os.environ["FAKE_AGY_STREAM"]) as f:
+        sys.stdout.write(f.read())
+elif "stream-json" in sys.argv:
+    print(json.dumps({"event": "init", "conversation_id": out.get("conversation_id") or "c-fake"}), flush=True)
+    if os.environ.get("FAKE_AGY_STEP"):
+        print(json.dumps({"event": "step_update", "step_update": {"tool_name": os.environ["FAKE_AGY_STEP"],
+                                                                  "state": "RUNNING"}}), flush=True)
+    if os.environ.get("FAKE_AGY_LEFTOVER"):
+        left = subprocess.Popen([sys.executable, "-c", f"import time; time.sleep({os.environ['FAKE_AGY_LEFTOVER']})"])
+        if log:
+            with open(log + ".leftover", "w") as f:
+                f.write(str(left.pid))
+    stall = float(os.environ.get("FAKE_AGY_STALL", "0"))
+    if stall:
+        pids = [os.getpid()]
+        if os.environ.get("FAKE_AGY_COMMAND"):
+            pids.append(subprocess.Popen([sys.executable, "-c", f"import time; time.sleep({stall})"]).pid)
+        if log:
+            with open(log + ".pids", "w") as f:
+                f.write(" ".join(map(str, pids)))
+        time.sleep(stall)
+    if denied:
+        print(json.dumps({"event": "step_update", "step_update": {"step_type": "tool", "tool_name": "run_command",
+                                                                  "tool_info": {"parameters": {"CommandLine": denied}}}}))
+    print(json.dumps({"event": "result", "result": out}))
+else:
+    print(json.dumps(out))

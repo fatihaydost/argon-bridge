@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Runs the package from the plugin root; no install step needed. On Windows this runs in Git Bash, where
+# `python3` may be the Microsoft Store stub, so each candidate is tried for real.
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+export PYTHONUTF8=1  # Windows defaults to cp1252 for files and pipes
+for PY in python3 python "py -3"; do
+  if $PY -c 'import sys; sys.exit(sys.version_info < (3, 9))' 2>/dev/null; then
+    exec $PY -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from argon_bridge.cli import main; sys.exit(main())' "$ROOT" "$@"
+  fi
+done
+echo '{"systemMessage": "argon-bridge: Python 3.9+ not found (tried python3, python, py -3)"}'
+exit 0
