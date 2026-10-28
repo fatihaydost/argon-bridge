@@ -1,6 +1,6 @@
 {
   "name": "argon-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bridges Claude Code and Gemini 4 Argon (via the Antigravity CLI): independent plan/diff review, second opinions, and opt-in delegated coding in an isolated git worktree.",
   "author": {"name": "Fatih Aydost"},
   "homepage": "https://github.com/fatihaydost/argon-bridge",
