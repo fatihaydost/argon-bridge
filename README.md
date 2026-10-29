@@ -166,7 +166,7 @@ All settings live in `~/.config/argon-bridge/config.json` and are optional:
 | `mode` | `"standard"` | Automatic review trigger level: `"thorough"`, `"standard"`, or `"off"`. |
 | `effort` | `"medium"` | Argon reasoning depth for reviews and `ask`: `"low"`, `"medium"`, or `"high"`. |
 | `timeout` | `900` | Max seconds for a background commit/Stop review (`30`–`1800`). Foreground `review` caps at `400s`. |
-| `plan_wait` | `120` | Max seconds a plan waits in the foreground (`1`–`400`) before moving to the background. |
+| `plan_wait` | `120` | Max seconds a plan waits in the foreground (`1`–`400`) before moving to the background; commits made before its result arrives are named with it. |
 | `ask_timeout` | `400` | Default seconds `ask` waits (`30`–`timeout`); override per call with `ask --timeout N`. |
 | `manage_agy_permissions` | `false` | Set via `permissions on\|off`. Writes temporary per-run secret-blocking rules to `~/.gemini/config/projects/`. |
 | `private_roots` | `[]` | Paths Argon must never access. Commits there are skipped; plans there are reviewed from plan text only. |

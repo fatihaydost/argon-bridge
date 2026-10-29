@@ -225,6 +225,10 @@ DIED = ("⚠️ Argon background check died (process gone or far past its time l
 PLAN_DIED = "⚠️ Argon's plan review died (process gone or far past its time limit); the plan was not reviewed"
 
 
+PLAN_PENDING = ("argon-bridge: the plan these changes follow is still being reviewed by Argon; "
+                "its findings may ask for changes.")
+
+
 DELEGATE = "argon-bridge delegate"  # every delegated-phase note names the next delegate command
 
 
@@ -282,16 +286,20 @@ def _inbox(sid):
     for item in state.inbox_take(sid):
         if item.get("kind") == "plan_late":
             data = state.session(sid)
+            went_ahead = (data.pop("plan_pending", None) or {}).get("shas")
             if item.get("digest") and item.get("ok") is not False \
                     and item["digest"] not in data.get("plan_digests", []):  # the same plan text is not reviewed again
                 data["plan_digests"] = (data.get("plan_digests", []) + [item["digest"]])[-20:]
-                state.save_session(sid, data)
+            state.save_session(sid, data)
             if item.get("findings"):
                 has_findings = True
                 _set_fix_pass(sid, "plan_fix_pass")  # the revised plan is not reviewed again
                 parts.append(framing.findings_for_claude({"findings": item["findings"]}, "plan_late"))
             else:
                 parts.append(f"argon-bridge (plan review that finished after the plan went ahead): {item['status']}")
+            if went_ahead:
+                parts.append("argon-bridge: commits made before this plan review finished: "
+                             + " ".join(s[:7] for s in went_ahead))
             continue
         if item.get("kind") == "phase":
             parts.append(item["status"])
@@ -513,19 +521,22 @@ def _own(sid, root, pre, head):
 
 
 def _commit_landed(sid, root):
-    """Claims the session's new commits and starts the review of its unreviewed ones; returns a note or None."""
+    """Claims the session's new commits and starts the review of its unreviewed ones.
+    Returns (a note or None, the session's new commits)."""
     data = state.session(sid)
     code = data.get("code", {}).get(root)
     pre = code.pop("pre", None) if code else None
     if not pre:
-        return None
+        return None, []
     head = _head(root)
     owned = _own(sid, root, pre, head) if head and head != pre.get("head") else []
     if not owned:  # the commit failed, or every new commit was another session's
         with state.owners(root) as o:
             o["inflight"].pop(sid, None)
         state.save_session(sid, data)
-        return None
+        return None, []
+    if data.get("plan_pending"):  # named when that plan review lands (_inbox)
+        data["plan_pending"]["shas"] += owned
     shas, review = code.get("pending", []) + owned, None
     spans = packet.runs(root, owned)
     done = {f for base, last in spans for f in packet.commit_files(root, base, last)}
@@ -543,13 +554,13 @@ def _commit_landed(sid, root):
     if fixed:
         _clear_fix_pass(sid, "code_fix_pass")  # used up here, so a failed attempt keeps it
     if not review:
-        return None
+        return None, owned
     cfg = config.load()
     prompt, pkt = prompts.code_review(packet.user_words(sid), review[0], packet.decisions(root, cfg))
     packet.mark_reviewed(sid)
     _start_review(sid, "code", root, prompt, pkt, cfg, review[1])
     return ("argon-bridge: Argon is reviewing this commit in the background; "
-            "its findings will reach you later; fixes need the user's approval.")
+            "its findings will reach you later; fixes need the user's approval."), owned
 
 
 def on_commit_done(inp):
@@ -559,8 +570,10 @@ def on_commit_done(inp):
     sid = inp["session_id"]
     command = (inp.get("tool_input") or {}).get("command", "")
     root = packet.target_repo(command, inp.get("cwd", ".")) if packet.is_commit(command) else None
-    started = _commit_landed(sid, root) if root else None
-    notes = [n for n in (started, _inbox(sid)[0]) if n]
+    started, owned = _commit_landed(sid, root) if root else (None, [])
+    waiting = _inbox(sid)[0]  # may be the plan review's result, which names these commits
+    plan = PLAN_PENDING if owned and state.session(sid).get("plan_pending") else None
+    notes = [n for n in (started, plan, waiting) if n]
     if not notes:
         return {}
     out = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": "\n\n".join(notes)}}
@@ -615,6 +628,10 @@ def _plan_review(inp, plan_text, near):
     state.save_session(sid, data)
     result = _plan_wait(spec, cwd, cfg["plan_wait"])
     if result is None:  # still running: the same plan text is not reviewed a second time meanwhile
+        data = state.session(sid)
+        # shortcut: one mark per session; a second plan going ahead too shares it, and either result clears it
+        data["plan_pending"] = {"digest": digest, "shas": (data.get("plan_pending") or {}).get("shas", [])}
+        state.save_session(sid, data)
         return gateway.Result(False, error="background", detail=f"over {cfg['plan_wait']} s")
     if not result.ok:
         _forget_plan(sid, digest)
@@ -698,6 +715,8 @@ def on_stop(inp):
     if DELEGATE in waiting:  # a delegated job moves on without the user: Claude checks the phase now
         return {"decision": "block", "reason": waiting, "systemMessage": "Argon finished a delegated phase"}
     started = _stop_review(sid, inp.get("cwd", "."))
+    if started and state.session(sid).get("plan_pending"):
+        started += "; the plan it follows is still being reviewed"
     msg = "\n".join(m for m in (waiting, started) if m)
     return {"systemMessage": msg} if msg else {}
 

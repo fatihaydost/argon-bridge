@@ -406,6 +406,37 @@ class BackgroundTest(Env):
             hooks._plan_wait = orig
         self.assertNotIn(digest, state.session("s").get("plan_digests", []))
 
+    def plan_in_background(self, plan="1. fix add"):
+        with mock.patch.object(hooks, "_plan_wait", return_value=None):  # Argon took longer than plan_wait
+            hooks.on_exit_plan({"session_id": "s", "cwd": self.root, "tool_input": {"plan": plan}})
+
+    def test_commits_made_before_their_plan_review_finished_are_named(self):
+        """A user wanted to know which changes never got the plan review's second look (29.10)."""
+        self.agy_returns(success({"findings": []}))
+        self.plan_in_background()
+        ctx = self.commit()["hookSpecificOutput"]["additionalContext"]
+        self.assertIn(hooks.PLAN_PENDING, ctx)
+        sha = hooks._head(self.root)[:7]
+        state.inbox_put("s", {"kind": "plan_late", "root": None, "status": "Argon: 0 findings (3s)",
+                              "digest": hooks._digest("1. fix add"), "findings": None, "ok": True})
+        waiting, _ = hooks._inbox("s")
+        self.assertIn(f"commits made before this plan review finished: {sha}", waiting)
+        self.assertNotIn("plan_pending", state.session("s"))
+        stage(self.root, {"c.py": "z = 3\n" * 40})
+        self.assertNotIn(hooks.PLAN_PENDING, str(self.commit()))
+
+    def test_a_late_plan_review_with_no_commits_meanwhile_names_none(self):
+        self.plan_in_background()
+        state.inbox_put("s", {"kind": "plan_late", "root": None, "status": hooks.PLAN_DIED, "findings": None})
+        self.assertNotIn("commits made before", hooks._inbox("s")[0])
+        self.assertNotIn("plan_pending", state.session("s"))
+
+    def test_a_plan_reviewed_in_time_leaves_no_outstanding_mark(self):
+        self.agy_returns(success({"findings": []}))
+        hooks.on_exit_plan({"session_id": "s", "cwd": self.root, "tool_input": {"plan": "1. fix add"}})
+        self.assertNotIn("plan_pending", state.session("s"))
+        self.assertNotIn(hooks.PLAN_PENDING, str(self.commit()))
+
     def test_status_does_not_list_a_dead_review_as_running(self):
         state.mark_running("j9", {"sid": "s", "kind": "code", "root": self.root, "timeout": 900}, pid=999999)
         self.assertNotIn("running: code", run_cli_output("status"))
