@@ -1,7 +1,7 @@
 ---
 name: argon-bridge
 description: Argon (Gemini 4 Argon via the agy CLI) as a read-only second reviewer and second opinion. Use when the user runs /argon-bridge (mode, effort, status, review, ask), and on your own to get an independent second opinion before a hard-to-reverse decision (architecture, data model, public API, release), a design choice with several reasonable paths, or when the user asks what you think and you are not sure. Follow the per-mode rules below before asking on your own. Also, and only when the user asks, to hand work to Argon (`delegate`): Argon implements a task or phased plan in its own branch and worktree, you check every phase.
-argument-hint: "mode thorough|standard|off · effort low|medium|high · status · review · ask \"<question>\" · delegate"
+argument-hint: "mode thorough|standard|off · effort low|medium|high · status · findings · review · ask \"<question>\" · delegate"
 ---
 
 # argon-bridge
@@ -14,7 +14,7 @@ Run commands with `${CLAUDE_PLUGIN_ROOT}/bin/argon-bridge`.
 
 Arguments: `$ARGUMENTS`
 
-- `mode …`, `effort …`, `status`: run the command and show its output as is.
+- `mode …`, `effort …`, `status`, `findings`: run the command and show its output as is.
 - `review [--repo PATH] [--file PATH]...`: run it (use `--repo` with the repository you changed if it is not the
   current directory; `--file`, repeatable, adds a file to review, such as a report to check a second time, even
   when nothing changed; secret files and `private_roots` are refused). If it prints findings, follow the protocol it prints. If it prints a ⚠️ line, tell the user
