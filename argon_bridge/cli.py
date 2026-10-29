@@ -302,9 +302,9 @@ def cmd_ask(argv):
     if not result.ok:
         return 0
     if as_findings:
-        state.log_findings("ask", cwd if repo else None, None, result.data["findings"])
         if repo or files:  # quoted evidence is checked against the repository's files and the packet
             gateway._check_findings(result.data["findings"], cwd, pkt)
+        state.log_findings("ask", cwd if repo else None, None, result.data["findings"])  # with its marks
         if result.data["findings"]:
             print(framing.findings_for_claude(result.data, "ask"))
         return 0
