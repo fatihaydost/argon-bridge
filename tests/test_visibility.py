@@ -76,6 +76,32 @@ class VisibilityTest(Env):
         self.assertIn("1 commit reviewed: fffffff", text)
         self.assertIn("2 commits not reviewed yet (will be in the next review)", text)
 
+    def test_a_finding_on_a_file_changed_since_the_review_says_so(self):
+        self.agy_returns(success({"findings": [finding(file="a.py"), finding(file="b.py", claim="other")]}))
+        for rel, text in BIG.items():
+            with open(os.path.join(self.root, rel), "w") as f:
+                f.write(text)
+        subprocess.run(["git", "-C", self.root, "add", "."], check=True)
+        inp = {"session_id": "s", "cwd": self.root, "tool_input": {"command": "git commit -m x"}}
+        hooks.on_commit(inp)
+        subprocess.run(["git", "-C", self.root, "commit", "-qm", "x"], check=True)
+        with open(os.path.join(self.root, "a.py"), "w") as f:  # Claude goes on editing during the review
+            f.write("x = 2\n")
+        ctx = hooks.on_commit_done(inp)["hookSpecificOutput"]["additionalContext"]
+        mark = '"changed_since_review": true\n'  # in the JSON; the protocol line goes on with " = "
+        self.assertEqual(ctx.count(mark), 1)
+        self.assertLess(ctx.index('"file": "a.py"'), ctx.index(mark))
+        self.assertLess(ctx.index(mark), ctx.index('"file": "b.py"'))
+        self.assertIn(framing.MARKS["changed_since_review"], ctx)
+
+    def test_a_finding_on_an_unchanged_file_is_not_marked(self):
+        head = subprocess.run(["git", "-C", self.root, "rev-parse", "HEAD"], capture_output=True, text=True).stdout
+        state.inbox_put("s", {"kind": "code", "root": self.root, "status": "Argon: 1 findings (1s)", "ok": True,
+                              "findings": [finding()], "shas": [head.strip()], "head": head.strip()})
+        text, has = hooks._inbox("s")
+        self.assertTrue(has)
+        self.assertNotIn("changed_since_review", text)
+
     def test_long_findings_are_cut_and_the_rest_written_to_a_file(self):
         many = [finding(claim=f"claim {i} " + "x" * 250, line=i, evidence="e" * 390) for i in range(8)]
         for n in range(6):

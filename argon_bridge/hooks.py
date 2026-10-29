@@ -166,7 +166,7 @@ def run_job(path):
     state.inbox_put(job["sid"], {"kind": "plan_late" if handoff else job["kind"], "root": job["root"],
                                  "status": framing.status_line(result), "findings": findings,
                                  "digest": job.get("digest"), "ok": result.ok, "shas": job.get("shas"),
-                                 "range": f"{job['base']}..{job['head']}" if job.get("base") else None})
+                                 "head": job.get("head"), "range": f"{job['base']}..{job['head']}" if job.get("base") else None})
 
 
 def _hook_waits(handoff):
@@ -301,6 +301,8 @@ def _inbox(sid):
         where = item["root"] + (f", {_commits(shas, done)}" if shas else "")
         if item.get("findings"):
             has_findings = True
+            if item["kind"] == "code" and item.get("head"):  # Argon read a snapshot of head (_review)
+                _mark_changed(item["root"], item["head"], item["findings"])
             _set_fix_pass(sid, "code_fix_pass", item["root"])  # the fix commit is not reviewed again
             label = " ".join(s[:7] for s in shas) or "uncommitted changes"
             groups.append((f"review of {where}" if shas else f"review of uncommitted changes in {item['root']}",
@@ -316,6 +318,14 @@ def _inbox(sid):
             parts.append(f"argon-bridge ({root}): {n} commit{'s' * (n != 1)} not reviewed yet "
                          "(will be in the next review)")
     return "\n\n".join(parts), has_findings
+
+
+def _mark_changed(root, head, findings):
+    """Findings on files that differ now from the reviewed commit: their lines may have moved."""
+    changed = set((packet._git(root, "diff", "--name-only", "-z", head, "--") or "").split("\0"))  # -z: no quoting
+    for f in findings:
+        if os.path.normpath(f["file"]).replace(os.sep, "/") in changed:
+            f["changed_since_review"] = True
 
 
 def _code_findings(sid, groups):

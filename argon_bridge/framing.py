@@ -81,7 +81,9 @@ def grouped_body(groups):
 MARKS = {"unverified": '\n"unverified": true = evidence not found in file — verify before trusting it.',
          "origin": '\n"origin": "pre-existing" = the line is outside the changed lines: the code was there before this '
                    'change, so it is not a regression of it.',
-         "also_in_review_of": '\n"also_in_review_of" = the same finding came from the review of those commits too.'}
+         "also_in_review_of": '\n"also_in_review_of" = the same finding came from the review of those commits too.',
+         "changed_since_review": '\n"changed_since_review": true = the file changed after the review, so its lines '
+                                 'may have moved: check the current code before classifying it.'}
 
 
 STILL_REVIEWING = "Argon is still reviewing this plan in the background"
