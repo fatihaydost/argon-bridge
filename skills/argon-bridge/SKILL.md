@@ -1,6 +1,6 @@
 ---
 name: argon-bridge
-description: Argon (Gemini 4 Argon via the agy CLI) as a read-only second reviewer and second opinion. Use when the user runs /argon-bridge (mode, effort, status, review, ask), and on your own to get an independent second opinion before a hard-to-reverse decision (architecture, data model, public API, release), a design choice with several reasonable paths, or when the user asks what you think and you are not sure. Follow the per-mode rules below before asking on your own. Also, and only when the user asks, to hand work to Argon (`delegate`): Argon implements a task or phased plan in its own branch and worktree, you check every phase.
+description: Argon (Gemini 4 Argon via the agy CLI) as a read-only second reviewer and second opinion. Use when the user runs /argon-bridge (mode, effort, status, findings, review, ask), and on your own to get an independent second opinion before a hard-to-reverse decision (architecture, data model, public API, release), a design choice with several reasonable paths, or when the user asks what you think and you are not sure. Follow the per-mode rules below before asking on your own. Also, and only when the user asks, to hand work to Argon (`delegate`): Argon implements a task or phased plan in its own branch and worktree, you check every phase.
 argument-hint: "mode thorough|standard|off · effort low|medium|high · status · findings · review · ask \"<question>\" · delegate"
 ---
 
