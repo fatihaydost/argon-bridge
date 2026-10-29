@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 
-from . import compat, config, framing, gateway, packet, prompts, schemas, state
+from . import compat, config, framing, gateway, packet, permissions, prompts, schemas, state
 
 FIX_PASS_PROMPTS = 3  # a fix pass expires after this many new user prompts
 
@@ -34,15 +34,58 @@ def _digest(text):
 
 
 def _review(kind, root, prompt, pkt, cfg):
-    """Runs Argon in `root`, or in an empty dir when root is None (no repository access)."""
+    """Runs Argon in `root`, or in an empty dir when root is None (no repository access). A commit review runs in a
+    snapshot of the reviewed commit: Claude goes on editing `root` during the 2-8 minutes Argon reads it."""
     work = None if root else tempfile.mkdtemp(prefix="argon-bridge-norepo-")
+    snap = _snapshot(root, cfg.get("head")) if kind == "code" and root else None
     meta = {k: cfg.get(k) for k in ("sid", "root", "base", "head", "shas")} if kind != "plan" else None
+    # the user's own secret files too: the packet (their words) may name paths in `root`
+    rules = {"deny": list(dict.fromkeys(permissions.secret_rules(snap) + permissions.secret_rules(root)))} \
+        if snap else None
     try:
-        return gateway.run(kind, prompt, pkt, root or work, schemas.FINDINGS, cfg["effort"], cfg["timeout"],
-                           meta=meta)
+        result = gateway.run(kind, prompt, pkt, snap or root or work, schemas.FINDINGS, cfg["effort"],
+                             cfg["timeout"], rules=rules, meta=meta)
+        for f in (result.data or {}).get("findings", []) if snap and result.ok else []:
+            path = os.path.realpath(os.path.join(snap, f["file"]))
+            if path.startswith(os.path.realpath(snap) + os.sep):  # a snapshot path means nothing once it is gone
+                f["file"] = os.path.relpath(path, os.path.realpath(snap)).replace(os.sep, "/")
+        return result
     finally:
         if work:
             shutil.rmtree(work, ignore_errors=True)
+        if snap:
+            _drop_snapshot(root, snap)
+
+
+def _snapshots():
+    return os.path.join(state.dir(), "snapshots")
+
+
+def _snapshot(root, head):
+    """A detached worktree of `head` under the state dir, or None (the review then reads the live tree).
+    Sweeps the snapshots of workers killed before they removed theirs (SIGTERM: gateway.on_term exits at once)."""
+    if not head:
+        return None
+    no_hooks = os.path.join(_snapshots(), ".no-hooks")  # an empty dir: no post-checkout hook (husky) runs
+    os.makedirs(no_hooks, exist_ok=True)
+    for n in os.listdir(_snapshots()):
+        p = os.path.join(_snapshots(), n)
+        with contextlib.suppress(OSError):
+            if not n.startswith(".") and time.time() - os.path.getmtime(p) > gateway.TEMP_AGE:
+                shutil.rmtree(p, ignore_errors=True)  # its worktree entry goes with the next prune of its repo
+    snap = os.path.join(_snapshots(), state._stamp())
+    p = subprocess.run(["git", "-C", root, "-c", f"core.hooksPath={no_hooks}", "worktree", "add", "-q", "--detach",
+                        snap, head], capture_output=True, text=True)
+    if p.returncode != 0:
+        _drop_snapshot(root, snap)
+        return None
+    return snap
+
+
+def _drop_snapshot(root, snap):
+    for args in (("worktree", "remove", "--force", snap), ("worktree", "prune")):
+        subprocess.run(["git", "-C", root, *args], capture_output=True)
+    shutil.rmtree(snap, ignore_errors=True)
 
 
 def _start_review(sid, kind, root, prompt, pkt, cfg, shas):

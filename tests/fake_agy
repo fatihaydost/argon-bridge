@@ -8,7 +8,8 @@ FAKE_AGY_STREAM: a file of real agy stream-json lines (tests/fixtures) printed a
 FAKE_AGY_STALL: seconds a stream-json run goes silent after its first event; with FAKE_AGY_COMMAND set, a child
 process runs meanwhile as a command would. The pids go to FAKE_AGY_ARGS + ".pids". FAKE_AGY_STEP: a step_update event (tool name) printed right
 after init. FAKE_AGY_LEFTOVER: seconds a command it starts keeps running (and holding stdout) after its answer;
-its pid goes to FAKE_AGY_ARGS + ".leftover"."""
+its pid goes to FAKE_AGY_ARGS + ".leftover". FAKE_AGY_COPY: `<rel path>` in the cwd copied to FAKE_AGY_ARGS + ".copy"
+(what Argon read there)."""
 import json
 import os
 import re
@@ -28,6 +29,8 @@ if log:
     m = re.search(r"The (?:review|phase) packet is the file (\S+?)\. ", " ".join(sys.argv[1:]))
     if m:
         shutil.copyfile(m.group(1), log + ".packet")
+    if os.environ.get("FAKE_AGY_COPY"):
+        shutil.copyfile(os.environ["FAKE_AGY_COPY"], log + ".copy")
     if "--json-schema" in sys.argv:
         shutil.copyfile(sys.argv[sys.argv.index("--json-schema") + 1], log + ".schema")
 time.sleep(float(os.environ.get("FAKE_AGY_SLEEP", "0")))

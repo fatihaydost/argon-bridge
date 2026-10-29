@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 from argon_bridge import config, framing, gateway, hooks, state
-from tests.helpers import HERE, Env, finding, run_cli_output, success
+from tests.helpers import HERE, Env, cwd_of, finding, run_cli_output, success
 
 BIG = {"a.py": "x = 1\n" * 25, "b.py": "y = 2\n" * 25}
 
@@ -95,6 +95,70 @@ class BackgroundTest(Env):
         out = hooks.on_stop({"session_id": "s", "cwd": self.root})
         self.assertEqual(out.get("decision"), "block")
         self.assertIn("background check died", out["reason"])
+
+    def snapshots(self):
+        d = os.path.join(state.dir(), "snapshots")
+        return [n for n in os.listdir(d) if not n.startswith(".")] if os.path.isdir(d) else []
+
+    def test_commit_review_reads_a_snapshot_of_the_commit(self):
+        """Argon reads the repository while Claude goes on editing: it must read what was committed (29.10)."""
+        self.agy_returns(success({"findings": [finding(file="./a.py", evidence="x = 1")]}))
+        os.environ["FAKE_AGY_COPY"] = "a.py"
+        inp = {"session_id": "s", "cwd": self.root, "tool_input": {"command": "git commit -m x"}}
+        hooks.on_commit(inp)
+        subprocess.run(["git", "-C", self.root, "commit", "-qm", "x"], check=True)
+        with open(os.path.join(self.root, "a.py"), "w") as f:
+            f.write("edited after the commit\n")
+        out = hooks.on_commit_done(inp)
+        cwd = os.path.realpath(cwd_of(self.agy_calls()[-1]))
+        self.assertTrue(cwd.startswith(os.path.realpath(os.path.join(state.dir(), "snapshots")) + os.sep), cwd)
+        with open(self.args_file + ".copy") as f:
+            self.assertEqual(f.read(), BIG["a.py"])
+        self.assertEqual(self.snapshots(), [])
+        wt = subprocess.run(["git", "-C", self.root, "worktree", "list"], capture_output=True, text=True).stdout
+        self.assertEqual(len(wt.splitlines()), 1)
+        ctx = out["hookSpecificOutput"]["additionalContext"]
+        self.assertIn(f"review of {self.root},", ctx)
+        self.assertIn('"file": "a.py"', ctx)
+        self.assertNotIn(cwd, ctx)
+
+    @unittest.skipIf(os.name == "nt", "a POSIX hook script")
+    def test_snapshot_runs_no_checkout_hook(self):
+        marker = os.path.join(self.tmp, "hook-ran")
+        hook = os.path.join(self.root, ".git", "hooks", "post-checkout")
+        with open(hook, "w") as f:
+            f.write(f"#!/bin/sh\ntouch '{marker}'\n")
+        os.chmod(hook, 0o755)
+        subprocess.run(["git", "-C", self.root, "checkout", "-q", "HEAD"], check=True)
+        self.assertTrue(os.path.exists(marker))  # the hook works
+        os.remove(marker)
+        self.agy_returns(success({"findings": []}))
+        self.commit()
+        self.assertEqual(len(self.agy_calls()), 1)
+        self.assertFalse(os.path.exists(marker))
+
+    def test_snapshot_failure_falls_back_to_the_live_tree(self):
+        self.agy_returns(success({"findings": []}))
+        with mock.patch.object(hooks, "_snapshot", return_value=None):
+            self.commit()
+        self.assertEqual(cwd_of(self.agy_calls()[-1]), self.root)
+
+    def test_stale_snapshots_are_swept(self):
+        d = os.path.join(state.dir(), "snapshots")
+        old, fresh = os.path.join(d, "old"), os.path.join(d, "fresh")
+        for p in (old, fresh):
+            os.makedirs(p)
+        os.utime(old, (time.time() - gateway.TEMP_AGE - 60,) * 2)
+        self.agy_returns(success({"findings": []}))
+        self.commit()
+        self.assertEqual(self.snapshots(), ["fresh"])
+
+    def test_stop_review_reads_the_live_tree(self):
+        config.set_value("mode", "thorough")
+        self.agy_returns(success({"findings": []}))
+        self.edited(self.root, {"n.py": "n = 1\n" * 40})
+        hooks.on_stop({"session_id": "s", "cwd": self.root})
+        self.assertEqual(cwd_of(self.agy_calls()[-1]), self.root)
 
     def test_finished_job_leaves_no_marker(self):
         self.agy_returns(success({"findings": []}))
