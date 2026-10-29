@@ -75,7 +75,8 @@ def _snapshot(root, head):
                 shutil.rmtree(p, ignore_errors=True)  # its worktree entry goes with the next prune of its repo
     snap = os.path.join(_snapshots(), state._stamp())
     p = subprocess.run(["git", "-C", root, "-c", f"core.hooksPath={no_hooks}", "worktree", "add", "-q", "--detach",
-                        snap, head], capture_output=True, text=True)
+                        snap, head], capture_output=True, text=True,
+                       env={**os.environ, "GIT_LFS_SKIP_SMUDGE": "1"})  # no LFS downloads for a read-only copy
     if p.returncode != 0:
         _drop_snapshot(root, snap)
         return None
