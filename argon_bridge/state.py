@@ -241,6 +241,48 @@ def recent_log(n=20):
     return [json.loads(line) for line in lines if line.strip()]
 
 
+FINDINGS_MAX = 2 * 1024 * 1024
+FINDING_KEYS = ("file", "line", "claim", "severity", "kind", "unverified", "origin")
+
+
+def log_findings(review, root, head, findings):
+    """Every finding Argon reported, kept beyond the chat: a weekly skim catches a finding wrongly rejected.
+    root: the user's repository (never a snapshot), head: the reviewed commit."""
+    if not findings:
+        return
+    p = os.path.join(dir(), "findings.jsonl")
+    with contextlib.suppress(OSError):
+        if os.path.getsize(p) > FINDINGS_MAX:
+            # shortcut: a writer appending meanwhile can lose its lines; a lock if the log ever matters more
+            with open(p) as f:
+                lines = f.readlines()
+            tmp = f"{p}.{os.getpid()}.tmp"
+            with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+                f.writelines(lines[len(lines) // 2:])
+            os.replace(tmp, p)
+    ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with open(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), "a") as f:
+        f.writelines(json.dumps({"ts": ts, "review": review, "root": root, "head": head,
+                                 **{k: x[k] for k in FINDING_KEYS if k in x},
+                                 "evidence": str(x.get("evidence", ""))[:300]}) + "\n" for x in findings)
+
+
+def recent_findings(days=7):
+    since = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - days * 86400))
+    try:
+        with open(os.path.join(dir(), "findings.jsonl")) as f:
+            lines = f.readlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        with contextlib.suppress(ValueError):
+            e = json.loads(line)
+            if isinstance(e, dict) and e.get("ts", "") >= since:
+                out.append(e)
+    return out
+
+
 def cooldown_until():
     return _read(os.path.join(dir(), "cooldown.json"), {}).get("until", 0)
 

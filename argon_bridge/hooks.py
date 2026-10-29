@@ -150,6 +150,8 @@ def run_job(path):
         result = gateway.Result(False, error="agy_error", detail=f"argon-bridge error: {type(e).__name__}: {e}")
     finally:
         state.clear_running(job_id)
+    if result.ok:
+        state.log_findings(job["kind"], job["root"], job.get("head"), result.data.get("findings"))
     handoff = job.get("handoff")
     if handoff:  # a plan review: the hook may still be waiting for it
         res = os.path.join(handoff, "result.json")

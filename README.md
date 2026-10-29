@@ -92,6 +92,7 @@ Run these inside Claude Code (or directly in your terminal via `argon-bridge <co
 | Command | What it does |
 | --- | --- |
 | `/argon-bridge status` | Shows `agy` & Argon availability, active settings, running background checks, waiting inbox results, recent history, and delegated jobs. |
+| `/argon-bridge findings` | Lists Argon's findings of the last 7 days by repository, newest first. Every finding is kept in `~/.local/state/argon-bridge/findings.jsonl`, also the ones Claude rejected in the chat: a weekly skim catches a wrong rejection. |
 | `/argon-bridge review` | Reviews uncommitted changes in the foreground. Add `--repo PATH` for another repo or `--file PATH` (repeatable) to review specific files even when nothing changed in git. |
 | `/argon-bridge ask "<question>"` | Gets Argon's independent opinion alongside Claude's view. Supports `--repo PATH`, `--file PATH` (repeatable), `--findings` (up to 15 verified findings), and `--timeout SECONDS`. |
 | `/argon-bridge mode thorough\|standard\|off` | Controls when Argon runs automatically (see table below). Default: `standard`. |

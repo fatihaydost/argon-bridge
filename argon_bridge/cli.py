@@ -52,6 +52,7 @@ USAGE = """usage: argon-bridge <command>
   worker-timeout SECONDS       how long one delegated phase may take (300-14400)
   permissions on|off           block Argon from reading secret files (.env, keys, ~/.ssh)
   status                       agy, login, settings, recent checks
+  findings                     Argon's findings of the last 7 days, newest first, by repository
   review [--repo PATH] [--file PATH]...  review current changes now; --file (repeatable) adds a file to
                                review, e.g. a report to check a second time, with or without changes
   ask "<question>" [--repo PATH] [--file PATH]... [--findings] [--timeout SECONDS]
@@ -210,6 +211,19 @@ def cmd_status():
     return 0
 
 
+def cmd_findings():
+    by_root = {}
+    for e in reversed(state.recent_findings()):
+        by_root.setdefault(e.get("root") or "(no repository)", []).append(e)
+    for root, es in by_root.items():
+        print(root)
+        for e in es:
+            claim = " ".join(str(e.get("claim", "")).split())
+            print(f"  {e.get('ts', '')[:10]} {(e.get('head') or '-')[:7]} {e.get('file')}:{e.get('line')} "
+                  f"{e.get('severity', '?')} {claim[:100]}")
+    return 0
+
+
 def cmd_review(argv):
     cfg = config.load()
     repo = _opt(argv, "--repo")
@@ -244,6 +258,8 @@ def cmd_review(argv):
         if not root:
             shutil.rmtree(cwd, ignore_errors=True)
     print(framing.status_line(result))
+    if result.ok:
+        state.log_findings("review", root, None, result.data.get("findings"))
     if result.ok and diff.strip():
         hooks.remember_review(root, diff, result, sid)
     if result.ok and result.data.get("findings"):
@@ -286,6 +302,7 @@ def cmd_ask(argv):
     if not result.ok:
         return 0
     if as_findings:
+        state.log_findings("ask", cwd if repo else None, None, result.data["findings"])
         if repo or files:  # quoted evidence is checked against the repository's files and the packet
             gateway._check_findings(result.data["findings"], cwd, pkt)
         if result.data["findings"]:
@@ -323,6 +340,8 @@ def main(argv=None):
         return worker.main(rest)
     if cmd == "status":
         return cmd_status()
+    if cmd == "findings":
+        return cmd_findings()
     if cmd == "permissions":
         return cmd_permissions(rest)
     if cmd in ("review", "ask"):

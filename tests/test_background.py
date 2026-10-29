@@ -437,6 +437,41 @@ class BackgroundTest(Env):
         self.assertNotIn("plan_pending", state.session("s"))
         self.assertNotIn(hooks.PLAN_PENDING, str(self.commit()))
 
+    def test_every_finding_is_logged_with_the_users_repo(self):
+        self.agy_returns(success({"findings": [finding(evidence="e" * 1000), finding(file="b.py", claim="b breaks")]}))
+        self.commit()
+        with open(os.path.join(state.dir(), "findings.jsonl")) as f:
+            lines = [json.loads(line) for line in f]
+        self.assertEqual([e["file"] for e in lines], ["a.py", "b.py"])
+        self.assertEqual({e["root"] for e in lines}, {self.root})
+        self.assertEqual({e["head"] for e in lines}, {hooks._head(self.root)})
+        self.assertEqual(lines[0]["review"], "code")
+        self.assertLessEqual(len(lines[0]["evidence"]), 300)
+
+    def test_findings_command_lists_the_last_week(self):
+        self.assertEqual(run_cli_output("findings"), "")
+        old = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() - 8 * 86400))
+        with open(os.path.join(state.dir(), "findings.jsonl"), "w") as f:
+            f.write(json.dumps({"ts": old, "root": self.root, "file": "old.py", "line": 1, "claim": "old one"}) + "\n")
+        self.agy_returns(success({"findings": [finding(claim="x" * 300), finding(file="b.py", claim="b breaks")]}))
+        self.commit()
+        out = run_cli_output("findings")
+        self.assertNotIn("old one", out)
+        self.assertIn(self.root, out)
+        sha = hooks._head(self.root)[:7]
+        self.assertIn(f"{sha} b.py:1 high b breaks", out)
+        self.assertNotIn("x" * 101, out)
+
+    def test_findings_log_keeps_its_newest_half_when_too_big(self):
+        p = os.path.join(state.dir(), "findings.jsonl")
+        with open(p, "w") as f:
+            for i in range(4):
+                f.write(json.dumps({"n": i, "pad": "p" * 100}) + "\n")
+        with mock.patch.object(state, "FINDINGS_MAX", 300):
+            state.log_findings("code", self.root, None, [finding()])
+        with open(p) as f:
+            self.assertEqual([json.loads(line).get("n") for line in f], [2, 3, None])
+
     def test_status_does_not_list_a_dead_review_as_running(self):
         state.mark_running("j9", {"sid": "s", "kind": "code", "root": self.root, "timeout": 900}, pid=999999)
         self.assertNotIn("running: code", run_cli_output("status"))
